@@ -32,3 +32,20 @@ authRouter.post(`/sign-up`,
             })
         }
     });
+
+    authRouter.post('/login', async (req: Request, res: Response) => {
+        const user = await prisma.user.findFirst({
+            where: {
+                username: req.body.username
+            },
+            include: {
+                item: {
+                    orderBy: {
+                        expiry: 'asc' // earlier dates first, far future dates last
+                    }
+                }
+            }
+        });
+        console.log(user);
+        res.send()
+    })
