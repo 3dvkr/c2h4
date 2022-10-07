@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { z, AnyZodObject } from "zod";
+import bcrypt from "bcrypt";
 
 import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
@@ -52,15 +53,15 @@ authRouter.post(
   async (req: Request, res: Response) => {
     try {
       const { username, password, email } = req.body;
+      const hash = await bcrypt.hash(password, 10);
       const user = await prisma.user.create({
         data: {
           username,
-          password,
+          password: hash,
           email,
         },
       });
-      (<ISessionData>req.session).username = req.body.username;
-      res.json({ message: "ok" });
+      res.json({ message: "user created" });
     } catch (error) {
       res.status(400).json({ error });
     }
@@ -68,17 +69,32 @@ authRouter.post(
 );
 
 authRouter.post("/login", async (req: Request, res: Response) => {
-  const user = await prisma.user.findFirst({
-    where: {
-      username: req.body.username,
-    },
-    include: {
-      item: {
-        orderBy: {
-          expiry: "asc", // earlier dates first, far future dates last
+  const { email, password } = req.body;
+
+  if (email == null || password == null) {
+    return res.sendStatus(403);
+  }
+
+  try {
+    const user = await prisma.user.findFirst({
+      where: {
+        email: req.body.email,
+      },
+      include: {
+        item: {
+          orderBy: {
+            expiry: "asc",
+          },
         },
       },
-    },
-  });
-  res.send();
+    });
+    if (!user) return res.status(404).json({ message: "User not found." });
+    const matches = await bcrypt.compare(password, user.password);
+    if (!matches) {
+      return res.status(403).json({ message: "Incorrect password." });
+    }
+    return res.status(200);
+  } catch (err) {
+    res.status(400).json(err);
+  }
 });
